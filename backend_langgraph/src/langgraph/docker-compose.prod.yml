@@ -1,0 +1,87 @@
+# src/langgraph/docker-compose.prod.yml
+
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        APP_ENV: production
+    ports:
+      - "8000:8000"
+    volumes:
+      # We only mount logs in production, not the source code.
+      - ./logs:/app/logs
+    env_file:
+      - .env.production # <-- Uses the production environment file
+    depends_on:
+      # Ensures the database is healthy before the app starts
+      postgres:
+        condition: service_healthy
+    restart: always
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:15-alpine
+    env_file:
+      - .env.production # <-- Loads DB credentials securely
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    networks:
+      - app-network # <-- Renamed for clarity
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.production # <-- Loads Grafana password securely
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml
+    networks:
+      - app-network
+    restart: always
+
+  # cAdvisor is great for monitoring but less critical than the app/db
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - app-network
+    restart: always
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  grafana-storage:

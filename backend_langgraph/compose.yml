@@ -1,0 +1,168 @@
+# Morgana - Unified Docker Compose
+#
+# This file orchestrates all the services required to run the Morgana application,
+# including the LangGraph agent, MCP tools, and the LiveKit server.
+#
+# To run the entire system, execute:
+# docker compose up --build
+#
+
+services:
+  #--------------------------------------------------------------------------
+  # Core LangGraph API
+  #--------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: src/langgraph/Dockerfile
+    container_name: morgana-langgraph-api
+    dns:
+      - 8.8.8.8
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file:
+      - .env
+    volumes:
+      - ./src:/app/src
+      - langgraph_venv:/app/src/langgraph/.venv
+    networks:
+      - morgana-network
+    restart: unless-stopped
+
+  #--------------------------------------------------------------------------
+  # Database and Cache
+  #--------------------------------------------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: morgana-postgres-db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+      - ./src/langgraph/schema.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - morgana-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: morgana-redis
+    networks:
+      - morgana-network
+    restart: unless-stopped
+
+  #--------------------------------------------------------------------------
+  # MCP Tools
+  #--------------------------------------------------------------------------
+  # mcp_tools_agent:
+  #   build:
+  #     context: ./src/langgraph/app/core/langgraph/toolsagent/microsoft_mcp
+  #     dockerfile: Dockerfile
+  #   container_name: morgana-mcp-tools-agent
+  #   ports:
+  #     - "8002:8002"
+  #   env_file:
+  #     - .env
+  #   networks:
+  #     - morgana-network
+  #   restart: unless-stopped
+
+  # --- Add this new service for the GitHub MCP Server ---
+  # mcp_github_server:
+  #   image: ghcr.io/github/github-mcp-server:latest
+  #   container_name: morgana-mcp-github-server
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     # Pass the PAT from the .env file into the container
+  #     - GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN}
+  #   # This command starts the server in HTTP mode inside the container
+  #   # The --host 0.0.0.0 makes it accessible to other containers on the network
+  #   command: ["http", "--host", "0.0.0.0", "--port", "8080"]
+  #   networks:
+  #     - morgana-network
+  #   # You can uncomment the 'ports' mapping below if you ever need to access
+  #   # this server directly from your host machine for debugging purposes.
+  #   ports:
+  #     - "8081:8080"
+
+  mcp_browser_agent:
+    build:
+      context: ./src/langgraph/app/core/langgraph/deepagents/browser-use-mcp-server
+      dockerfile: Dockerfile
+    container_name: morgana-mcp-browser-agent
+    ports:
+      - "8003:8000" # Internal port is 8000, exposed as 8003
+    env_file:
+      - .env
+    networks:
+      - morgana-network
+    restart: unless-stopped
+
+  #--------------------------------------------------------------------------
+  # LiveKit Server
+  #--------------------------------------------------------------------------
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: morgana-livekit
+    restart: unless-stopped
+    command:
+      - --dev
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    environment:
+      LIVEKIT_KEYS: "devkey: secret"
+    networks:
+      - morgana-network
+    volumes:
+      - livekit-data:/data
+
+  #--------------------------------------------------------------------------
+  # LiveKit Agent - The Bridge
+  #--------------------------------------------------------------------------
+  livekit-agent:
+    build:
+      context: .
+      dockerfile: livekit-agent.Dockerfile
+    container_name: morgana-livekit-agent
+    restart: unless-stopped
+    depends_on:
+      - api
+      - livekit
+    env_file:
+      - .env
+    environment:
+      - MORGANA_BACKEND_URL=http://api:8000
+      - API_USER_EMAIL=${API_USER_EMAIL}
+      - API_USER_PASSWORD=${API_USER_PASSWORD}
+      - LIVEKIT_URL=${LIVEKIT_URL}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+    volumes:
+      - ./src:/app/src
+    networks:
+      - morgana-network
+
+networks:
+  morgana-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  livekit-data:
+  langgraph_venv:

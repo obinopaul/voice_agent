@@ -375,7 +375,7 @@ async def entrypoint(ctx: JobContext):
         #     config={"configurable": {"thread_id": thread_id}} if thread_id else {},
         # ),
         llm = openai.LLM(model="gpt-4o"),
-        tts=hume.TTS(),
+        tts=deepgram.TTS(),
         turn_detection=EnglishModel(),
         min_endpointing_delay=0.8,
         max_endpointing_delay=6.0,

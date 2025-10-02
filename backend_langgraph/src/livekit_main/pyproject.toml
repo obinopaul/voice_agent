@@ -1,0 +1,15 @@
+[project]
+name = "livekit-fastapi-voice-agent"
+version = "0.1.0"
+description = "A real-time voice agent for a FastAPI/LangGraph backend, using LiveKit Agents."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.1",
+    "livekit>=1.0.12",
+    "livekit-agents[deepgram,silero,turn-detector]~=1.2",
+    "livekit-plugins-deepgram>=1.2.6",
+    "livekit-plugins-silero>=1.2.6",
+    "livekit-plugins-turn-detector>=1.2.6",
+]
