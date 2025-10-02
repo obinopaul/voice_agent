@@ -20,4 +20,6 @@ dependencies = [
     "livekit-plugins-silero>=1.2.6",
     "livekit-plugins-turn-detector>=1.2.6",
     "python-dotenv>=1.1.1",
+    "torch",
+    "onnxruntime",
 ]
